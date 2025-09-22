@@ -137,7 +137,7 @@ El cuerpo de la petición es un objeto JSON que especifica qué flujo ejecutar y
 *   `flow` (string, **requerido**): El nombre identificador del flujo que se desea ejecutar.
 *   `inputs` (objeto, **opcional**): Un objeto JSON que contiene los parámetros necesarios para ese flujo específico. Si un flujo no requiere inputs, se puede enviar un objeto vacío `{}`.
 
-#### Flujos Disponibles y sus Inputs
+#### Flujos Disponibles(ejemplos) y sus Inputs
 
 | `nombre_del_flujo` | Descripción                                 | `inputs` Requeridos                                     |
 |--------------------|---------------------------------------------|---------------------------------------------------------|
