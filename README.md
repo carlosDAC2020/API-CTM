@@ -71,8 +71,8 @@ Sigue estos pasos para levantar el entorno de desarrollo local.
 ### 1. Clonar el Repositorio
 
 ```bash
-git clone <URL_DEL_REPOSITORIO>
-cd <NOMBRE_DEL_DIRECTORIO>
+git clone https://github.com/carlosDAC2020/API-CTM.git
+cd API-CTM
 ```
 
 ### 2. Configurar Variables de Entorno
