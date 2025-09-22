@@ -1,0 +1,15 @@
+# --- Framework y Servidor ---
+django
+
+# --- Tareas en Segundo Plano ---
+celery[redis]
+
+# --- Base de Datos ---
+psycopg2-binary
+
+# --- Lógica de LangChain y Gemini ---
+langchain
+langchain-google-genai
+
+# --- Gestión de Variables de Entorno ---
+python-dotenv

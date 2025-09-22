@@ -1,0 +1,160 @@
+<!-- main/templates/main/index.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tareas Múltiples con Django y Celery</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background-color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        button { font-size: 16px; padding: 12px 24px; cursor: pointer; border-radius: 5px; border: none; background-color: #4CAF50; color: white; transition: background-color 0.3s; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .clear-button { background-color: #6c757d; }
+        #task-list-container { display: flex; flex-direction: column; gap: 15px; }
+        .task-box { background-color: #282c34; color: white; padding: 15px 20px; border-radius: 8px; border-left: 5px solid #6c757d; font-family: "Courier New", Courier, monospace; transition: all 0.3s ease; }
+        .task-box p, .task-box small { margin: 5px 0; }
+        .task-box small { color: #888; word-break: break-all; }
+        .task-box.status-PROGRESS { border-left-color: #007bff; }
+        .task-box.status-SUCCESS { border-left-color: #28a745; }
+        .task-box.status-FAILURE { border-left-color: #dc3545; }
+        #no-tasks-message { color: #666; text-align: center; padding: 20px; }
+        .results-list { list-style-type: '✓ '; padding-left: 20px; margin-top: 10px; font-size: 0.9em; color: #a7e0a7; }
+        pre { white-space: pre-wrap; font-family: inherit; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% csrf_token %}
+        <!-- He visto que tu app se llama 'main', así que he ajustado el título -->
+        <h1>Demostración con Django, Celery y LangChain</h1>
+        <p>Haz clic para iniciar uno o varios procesos en paralelo. El backend ahora corre sobre Django.</p>
+        <div class="controls">
+            <button id="startButton">Iniciar Nuevo Proceso</button>
+            <button id="clearButton" class="clear-button">Limpiar Completados</button>
+        </div>
+        <div id="task-list-container">
+            <p id="no-tasks-message">No hay procesos en ejecución.</p>
+        </div>
+    </div>
+
+    <script>
+        const startButton = document.getElementById('startButton');
+        const clearButton = document.getElementById('clearButton');
+        const taskListContainer = document.getElementById('task-list-container');
+        const noTasksMessage = document.getElementById('no-tasks-message');
+        const activeConnections = {};
+
+        // --- INICIO: CÓDIGO CLAVE PARA SOLUCIONAR EL ERROR 403 ---
+        
+        /**
+         * Función estándar para leer una cookie por su nombre.
+         * La necesitamos para obtener el valor del 'csrftoken'.
+         */
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+
+        // --- FIN DEL CÓDIGO CLAVE ---
+
+
+        startButton.addEventListener('click', async () => {
+            startButton.disabled = true;
+            startButton.textContent = 'Iniciando...';
+            try {
+                // Obtenemos dinámicamente la URL para 'start_task'
+                const startTaskUrl = "{% url 'start_task' %}";
+                
+                const response = await fetch(startTaskUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // ¡LA LÍNEA MÁS IMPORTANTE!
+                        // Aquí enviamos el token CSRF de vuelta al backend.
+                        'X-CSRFToken': csrftoken 
+                    },
+                });
+
+                if (!response.ok) {
+                    // Esto mostrará "Error del servidor" en tu alerta, como en la captura
+                    throw new Error(`Error del servidor`);
+                }
+
+                const data = await response.json();
+                const eventSourceUrl = `/task-status/${data.task_id}/`; 
+                createAndSubscribeToTask(data.task_id, eventSourceUrl);
+
+            } catch (error) {
+                console.error('Error al iniciar la tarea:', error);
+                alert(`Error al iniciar la tarea: ${error.message}. Revisa la consola.`);
+            } finally {
+                startButton.disabled = false;
+                startButton.textContent = 'Iniciar Nuevo Proceso';
+            }
+        });
+        
+        // El resto del script no necesita cambios...
+        // ... createAndSubscribeToTask y el listener de clearButton son iguales que antes ...
+        function createAndSubscribeToTask(taskId, eventSourceUrl) {
+            if (noTasksMessage) noTasksMessage.style.display = 'none';
+            const taskElement = document.createElement('div');
+            taskElement.className = 'task-box';
+            taskElement.id = `task-${taskId}`;
+            taskElement.innerHTML = `<small>ID: ${taskId}</small><p><b>Estado:</b> CONECTANDO...</p><p><b>Detalles:</b> Esperando conexión con el servidor...</p>`;
+            taskListContainer.appendChild(taskElement);
+            const eventSource = new EventSource(eventSourceUrl);
+            activeConnections[taskId] = eventSource;
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                const details = data.details || {};
+                let messageHTML = `<small>ID: ${taskId}</small><p><b>Estado:</b> ${data.state}</p><p><b>Detalles:</b> ${details.status || 'Cargando...'}</p>`;
+                if (details.progress !== undefined) {
+                    messageHTML += `<p><b>Progreso:</b> ${details.progress}%</p>`;
+                }
+                if (details.step_results && details.step_results.length > 0) {
+                    const resultsListItems = details.step_results.map(res => `<li>${res}</li>`).join('');
+                    messageHTML += `<div><b>Pasos:</b><ul class="results-list">${resultsListItems}</ul></div>`;
+                }
+                if (data.state === 'SUCCESS' && details.final_result) {
+                    messageHTML += `<div style="margin-top: 15px; padding: 10px; background-color: #3c414e; border-radius: 5px;"><b>Resultado Final:</b><pre>${details.final_result}</pre></div>`;
+                }
+                if (data.state === 'FAILURE') {
+                    messageHTML += `<p style="color: #ff6b6b; margin-top: 10px;"><b>Error:</b> ${details.status || 'Desconocido'}</p>`;
+                }
+                taskElement.innerHTML = messageHTML;
+                taskElement.className = `task-box status-${data.state}`;
+                if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
+                    eventSource.close();
+                    delete activeConnections[taskId];
+                }
+            };
+            eventSource.onerror = function() {
+                taskElement.innerHTML += '<p style="color: #ff6b6b;">Error de conexión. Se cerró el stream.</p>';
+                taskElement.className = 'task-box status-FAILURE';
+                eventSource.close();
+                delete activeConnections[taskId];
+            };
+        }
+        clearButton.addEventListener('click', () => {
+            const completedTasks = document.querySelectorAll('.status-SUCCESS, .status-FAILURE');
+            completedTasks.forEach(taskElement => taskElement.remove());
+            if (taskListContainer.childElementCount === 0 && noTasksMessage) {
+                noTasksMessage.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
