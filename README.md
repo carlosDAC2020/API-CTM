@@ -131,4 +131,150 @@ La arquitectura está diseñada para ser fácilmente extensible. Para añadir un
     ```
 3.  **Actualiza el Frontend (Opcional)**: Añade la nueva opción al selector en `index.html` para que los usuarios puedan ejecutarlo.
 
+
 ---
+
+## 🔌 Guía de uso 
+
+Esta sección documenta los endpoints de la API necesarios para interactuar con la plataforma de ejecución de flujos.
+
+La comunicación se basa en dos endpoints principales: uno para iniciar una tarea y otro para recibir sus actualizaciones en tiempo real.
+
+### Endpoint 1: Iniciar un Flujo de Trabajo
+
+Este endpoint crea una nueva tarea asíncrona y la pone en la cola para su ejecución.
+
+*   **URL**: `/start-task/`
+*   **Método**: `POST`
+*   **Content-Type**: `application/json`
+*   **Protección CSRF**: Sí. La petición debe incluir la cabecera `X-CSRFToken`.
+
+#### Cuerpo de la Petición (Request Body)
+
+El cuerpo de la petición es un objeto JSON que especifica qué flujo ejecutar y qué parámetros proporcionarle.
+
+```json
+{
+  "flow": "nombre_del_flujo",
+  "inputs": {
+    "parametro_1": "valor_1",
+    "parametro_2": "valor_2"
+  }
+}
+```
+
+*   `flow` (string, **requerido**): El nombre identificador del flujo que se desea ejecutar.
+*   `inputs` (objeto, **opcional**): Un objeto JSON que contiene los parámetros necesarios para ese flujo específico. Si un flujo no requiere inputs, se puede enviar un objeto vacío `{}`.
+
+#### Flujos Disponibles y sus Inputs
+
+| `nombre_del_flujo` | Descripción                                 | `inputs` Requeridos                                     |
+|--------------------|---------------------------------------------|---------------------------------------------------------|
+| `poem_flow`        | Genera un poema sobre un tema aleatorio.    | Objeto vacío: `{}`                                      |
+| `web_search_flow`  | Busca en la web y resume la respuesta.      | `{ "question": "Tu pregunta aquí..." }`                 |
+| *... (añadir más flujos aquí a medida que se creen)* | | |
+
+
+#### Respuesta Exitosa (Código 200 OK)
+
+Si la tarea se crea correctamente, la API devolverá un objeto JSON con el ID único de la tarea. Este ID es crucial para el siguiente paso.
+
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+}
+```
+
+#### Respuestas de Error
+
+*   **Código 400 (Bad Request)**: El cuerpo de la petición es inválido, no es un JSON, o falta el campo `flow`.
+*   **Código 403 (Forbidden)**: Falta el token CSRF o es incorrecto.
+*   **Código 500 (Internal Server Error)**: Ocurrió un error inesperado al crear la tarea.
+
+### Endpoint 2: Recibir Estado de la Tarea (Server-Sent Events)
+
+Una vez que tienes el `task_id` del endpoint anterior, debes abrir una conexión de tipo Server-Sent Events (SSE) a este endpoint para recibir las actualizaciones en tiempo real.
+
+*   **URL**: `/task-status/<task_id>/`
+*   **Método**: `GET`
+*   **Content-Type**: `text/event-stream`
+
+#### Cómo Consumirlo en JavaScript
+
+Debes usar la clase `EventSource` para suscribirte a las actualizaciones.
+
+```javascript
+// Obtén el task_id de la respuesta del endpoint /start-task/
+const taskId = 'a1b2c3d4-e5f6-7890-1234-567890abcdef';
+const eventSource = new EventSource(`/task-status/${taskId}/`);
+
+eventSource.onmessage = function(event) {
+    // Parsea los datos JSON que llegan en cada evento
+    const data = JSON.parse(event.data);
+    console.log("Nueva actualización:", data);
+
+    // Aquí va tu lógica para actualizar la UI con la nueva información
+    // updateTaskUI(taskId, data);
+
+    // Si la tarea ha terminado, cierra la conexión para ahorrar recursos
+    if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
+        eventSource.close();
+    }
+};
+
+eventSource.onerror = function(error) {
+    console.error("Error en la conexión SSE:", error);
+    eventSource.close();
+};
+```
+
+#### Formato de los Datos Recibidos
+
+Cada mensaje recibido a través del `EventSource` será un objeto JSON con la siguiente estructura:
+
+```json
+{
+  "state": "ESTADO_ACTUAL",
+  "details": { ... }
+}
+```
+
+*   `state` (string): El estado general de la tarea. Puede ser:
+    *   `PENDING`: La tarea está en la cola, esperando ser procesada.
+    *   `PROGRESS`: La tarea está siendo ejecutada por un worker.
+    *   `SUCCESS`: La tarea finalizó con éxito.
+    *   `FAILURE`: La tarea falló.
+
+*   `details` (objeto): Contiene la información detallada del estado `PROGRESS`, `SUCCESS` o `FAILURE`.
+
+##### Estructura del objeto `details`
+
+```json
+{
+    "status": "Mensaje de estado actual, ej: 'Ejecutando LLM...'",
+    "progress": 80, // Un número del 0 al 100
+    "step_results": [
+        // Una lista de los pasos completados hasta ahora
+        {
+            "type": "log",
+            "message": "▶️ Iniciando paso: 'Generando Prompt del Tema'..."
+        },
+        {
+            "type": "tool_result",
+            "step_name": "Búsqueda en la Web (Tavily)",
+            "tool": "tavily_search_results_json",
+            "data": [
+                {
+                    "url": "https://example.com",
+                    "content": "Contenido encontrado en la web..."
+                }
+            ]
+        }
+    ],
+    "final_result": "El resultado final de la cadena cuando state es 'SUCCESS'"
+}
+```
+
+*   `step_results` (array): Una lista ordenada de los eventos ocurridos durante la ejecución. Cada objeto en el array tiene un `type` que te permite renderizarlo de forma diferente:
+    *   `type: "log"`: Un simple mensaje de progreso. Muestra el `message`.
+    *   `type: "tool_result"`: El resultado de la ejecución de una herramienta. Muestra el `step_name` como título y el contenido de `data` (que suele ser un objeto o lista de objetos JSON).

@@ -10,6 +10,7 @@ psycopg2-binary
 # --- Lógica de LangChain y Gemini ---
 langchain
 langchain-google-genai
+langchain_community
 
 # --- Gestión de Variables de Entorno ---
 python-dotenv

@@ -1,14 +1,13 @@
-<!-- main/templates/main/index.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tareas Múltiples con Django y Celery</title>
+    <title>Plataforma de Flujos LangChain</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
         .container { max-width: 800px; margin: auto; background-color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        .controls { display: flex; justify-content: center; gap: 15px; margin-top: 25px; margin-bottom: 30px; }
         button { font-size: 16px; padding: 12px 24px; cursor: pointer; border-radius: 5px; border: none; background-color: #4CAF50; color: white; transition: background-color 0.3s; }
         button:disabled { background-color: #cccccc; cursor: not-allowed; }
         .clear-button { background-color: #6c757d; }
@@ -20,18 +19,40 @@
         .task-box.status-SUCCESS { border-left-color: #28a745; }
         .task-box.status-FAILURE { border-left-color: #dc3545; }
         #no-tasks-message { color: #666; text-align: center; padding: 20px; }
-        .results-list { list-style-type: '✓ '; padding-left: 20px; margin-top: 10px; font-size: 0.9em; color: #a7e0a7; }
+        .results-list { list-style-type: none; padding-left: 10px; margin-top: 10px; font-size: 0.9em; }
+        .results-list li { margin-bottom: 10px; }
         pre { white-space: pre-wrap; font-family: inherit; }
+
+        /* --- NUEVOS ESTILOS PARA LA INTERFAZ GENÉRICA --- */
+        .flow-controls { border: 1px solid #ddd; padding: 20px; border-radius: 8px; margin-bottom: 20px; background-color: #fafafa; }
+        .flow-selector, #inputs-container { margin-bottom: 15px; display: flex; flex-direction: column; }
+        label { margin-bottom: 5px; font-weight: bold; color: #333; }
+        select, input[type="text"] { font-size: 16px; padding: 10px; border-radius: 5px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; }
+        .tool-output { background-color: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 5px; font-size: 0.85em; white-space: pre-wrap; margin-top: 5px; }
     </style>
 </head>
 <body>
     <div class="container">
         {% csrf_token %}
-        <!-- He visto que tu app se llama 'main', así que he ajustado el título -->
-        <h1>Demostración con Django, Celery y LangChain</h1>
-        <p>Haz clic para iniciar uno o varios procesos en paralelo. El backend ahora corre sobre Django.</p>
+        <h1>Plataforma Genérica de Flujos LangChain</h1>
+        <p>Selecciona un flujo para ejecutar y proporciona los datos necesarios.</p>
+
+        <div class="flow-controls">
+            <div class="flow-selector">
+                <label for="flow-select">Selecciona un Flujo:</label>
+                <select id="flow-select">
+                    <option value="poem_flow">1. Generador de Poemas (sin inputs)</option>
+                    <option value="web_search_flow">2. Búsqueda y Resumen Web (requiere input)</option>
+                </select>
+            </div>
+            <div id="inputs-container" style="display: none;">
+                <label for="flow-input">Pregunta:</label>
+                <input type="text" id="flow-input" placeholder="Ej: ¿Qué avances hubo en IA en 2024?">
+            </div>
+        </div>
+
         <div class="controls">
-            <button id="startButton">Iniciar Nuevo Proceso</button>
+            <button id="startButton">Iniciar Proceso</button>
             <button id="clearButton" class="clear-button">Limpiar Completados</button>
         </div>
         <div id="task-list-container">
@@ -46,12 +67,12 @@
         const noTasksMessage = document.getElementById('no-tasks-message');
         const activeConnections = {};
 
-        // --- INICIO: CÓDIGO CLAVE PARA SOLUCIONAR EL ERROR 403 ---
-        
-        /**
-         * Función estándar para leer una cookie por su nombre.
-         * La necesitamos para obtener el valor del 'csrftoken'.
-         */
+        // --- Nuevos elementos de la UI ---
+        const flowSelect = document.getElementById('flow-select');
+        const inputsContainer = document.getElementById('inputs-container');
+        const flowInput = document.getElementById('flow-input');
+
+        // Función para obtener el CSRF token (sin cambios)
         function getCookie(name) {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
@@ -68,79 +89,140 @@
         }
         const csrftoken = getCookie('csrftoken');
 
-        // --- FIN DEL CÓDIGO CLAVE ---
+        // --- Lógica para mostrar/ocultar el campo de input ---
+        flowSelect.addEventListener('change', () => {
+            if (flowSelect.value === 'web_search_flow') {
+                inputsContainer.style.display = 'block';
+            } else {
+                inputsContainer.style.display = 'none';
+            }
+        });
 
-
+        // --- Event Listener del botón de inicio (ACTUALIZADO) ---
         startButton.addEventListener('click', async () => {
+            const selectedFlow = flowSelect.value;
+            let inputs = {};
+
+            // Validar y recoger inputs si es necesario
+            if (selectedFlow === 'web_search_flow') {
+                if (!flowInput.value.trim()) {
+                    alert('Por favor, introduce una pregunta para la búsqueda.');
+                    return;
+                }
+                inputs.question = flowInput.value.trim();
+            }
+
             startButton.disabled = true;
             startButton.textContent = 'Iniciando...';
             try {
-                // Obtenemos dinámicamente la URL para 'start_task'
                 const startTaskUrl = "{% url 'start_task' %}";
-                
                 const response = await fetch(startTaskUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        // ¡LA LÍNEA MÁS IMPORTANTE!
-                        // Aquí enviamos el token CSRF de vuelta al backend.
-                        'X-CSRFToken': csrftoken 
+                        'X-CSRFToken': csrftoken
                     },
+                    // Cuerpo de la petición ahora es dinámico
+                    body: JSON.stringify({
+                        flow: selectedFlow,
+                        inputs: inputs
+                    })
                 });
 
                 if (!response.ok) {
-                    // Esto mostrará "Error del servidor" en tu alerta, como en la captura
-                    throw new Error(`Error del servidor`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error del servidor');
                 }
 
                 const data = await response.json();
-                const eventSourceUrl = `/task-status/${data.task_id}/`; 
+                const eventSourceUrl = `/task-status/${data.task_id}/`;
                 createAndSubscribeToTask(data.task_id, eventSourceUrl);
 
             } catch (error) {
                 console.error('Error al iniciar la tarea:', error);
-                alert(`Error al iniciar la tarea: ${error.message}. Revisa la consola.`);
+                alert(`No se pudo iniciar la tarea: ${error.message}`);
             } finally {
                 startButton.disabled = false;
-                startButton.textContent = 'Iniciar Nuevo Proceso';
+                startButton.textContent = 'Iniciar Proceso';
             }
         });
         
-        // El resto del script no necesita cambios...
-        // ... createAndSubscribeToTask y el listener de clearButton son iguales que antes ...
+        // --- FUNCIÓN DE RENDERIZADO DE RESULTADOS (NUEVA Y MEJORADA) ---
+        function renderTaskResults(details) {
+            if (!details.step_results || details.step_results.length === 0) {
+                return '';
+            }
+            let resultsHTML = '';
+            details.step_results.forEach(res => {
+                if (res.type === 'log') {
+                    // El 'res.message' ahora es mucho más descriptivo gracias a los cambios en el backend
+                    resultsHTML += `<li>${res.message.replace("▶️", "✓")}</li>`;
+                } else if (res.type === 'tool_result') {
+                    const toolData = JSON.stringify(res.data, null, 2);
+                    // Usamos res.step_name para un título más claro
+                    const stepName = res.step_name || res.tool; // Usamos el nombre del paso, o el tipo de herramienta como fallback
+                    resultsHTML += `
+                        <li>
+                            <strong>✓ Resultado de '${stepName}':</strong>
+                            <pre class="tool-output">${toolData}</pre>
+                        </li>`;
+                }
+            });
+            return `<div><b>Pasos del Flujo:</b><ul class="results-list">${resultsHTML}</ul></div>`;
+        }
+        
+        // --- Suscripción y actualización de la UI (ACTUALIZADO) ---
         function createAndSubscribeToTask(taskId, eventSourceUrl) {
             if (noTasksMessage) noTasksMessage.style.display = 'none';
             const taskElement = document.createElement('div');
             taskElement.className = 'task-box';
             taskElement.id = `task-${taskId}`;
-            taskElement.innerHTML = `<small>ID: ${taskId}</small><p><b>Estado:</b> CONECTANDO...</p><p><b>Detalles:</b> Esperando conexión con el servidor...</p>`;
+            taskElement.innerHTML = `<small>ID: ${taskId}</small><p><b>Estado:</b> CONECTANDO...</p><p><b>Detalles:</b> Esperando conexión del servidor...</p>`;
             taskListContainer.appendChild(taskElement);
+
             const eventSource = new EventSource(eventSourceUrl);
             activeConnections[taskId] = eventSource;
+
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
                 const details = data.details || {};
-                let messageHTML = `<small>ID: ${taskId}</small><p><b>Estado:</b> ${data.state}</p><p><b>Detalles:</b> ${details.status || 'Cargando...'}</p>`;
+
+                // Construimos el HTML base
+                let messageHTML = `
+                    <small>ID: ${taskId}</small>
+                    <p><b>Estado:</b> ${data.state}</p>
+                    <p><b>Detalles:</b> ${details.status || 'Cargando...'}</p>
+                `;
                 if (details.progress !== undefined) {
                     messageHTML += `<p><b>Progreso:</b> ${details.progress}%</p>`;
                 }
-                if (details.step_results && details.step_results.length > 0) {
-                    const resultsListItems = details.step_results.map(res => `<li>${res}</li>`).join('');
-                    messageHTML += `<div><b>Pasos:</b><ul class="results-list">${resultsListItems}</ul></div>`;
-                }
+                
+                // Usamos la nueva función para renderizar los pasos
+                messageHTML += renderTaskResults(details);
+
+                // Mostramos el resultado final si existe
                 if (data.state === 'SUCCESS' && details.final_result) {
-                    messageHTML += `<div style="margin-top: 15px; padding: 10px; background-color: #3c414e; border-radius: 5px;"><b>Resultado Final:</b><pre>${details.final_result}</pre></div>`;
+                    messageHTML += `
+                        <div style="margin-top: 15px; padding: 10px; background-color: #3c414e; border-radius: 5px;">
+                            <b>Resultado Final:</b>
+                            <pre>${details.final_result}</pre>
+                        </div>`;
                 }
+                
+                // Mostramos el mensaje de error si existe
                 if (data.state === 'FAILURE') {
                     messageHTML += `<p style="color: #ff6b6b; margin-top: 10px;"><b>Error:</b> ${details.status || 'Desconocido'}</p>`;
                 }
+
                 taskElement.innerHTML = messageHTML;
                 taskElement.className = `task-box status-${data.state}`;
+
                 if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
                     eventSource.close();
                     delete activeConnections[taskId];
                 }
             };
+
             eventSource.onerror = function() {
                 taskElement.innerHTML += '<p style="color: #ff6b6b;">Error de conexión. Se cerró el stream.</p>';
                 taskElement.className = 'task-box status-FAILURE';
@@ -148,6 +230,8 @@
                 delete activeConnections[taskId];
             };
         }
+
+        // Limpiar tareas completadas (sin cambios)
         clearButton.addEventListener('click', () => {
             const completedTasks = document.querySelectorAll('.status-SUCCESS, .status-FAILURE');
             completedTasks.forEach(taskElement => taskElement.remove());
