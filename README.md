@@ -14,36 +14,7 @@ Este proyecto es una plataforma backend robusta y escalable, diseñada para la *
 
 El flujo de comunicación y ejecución sigue el siguiente patrón:
 
-```
-                  +-------------------------+
-                  |  Cliente (Navegador)    |
-                  +-------------------------+
-                          |      ^
-      (1) Iniciar Tarea   |      | (4) Stream de Estado (SSE)
-        (POST /start-task)|      |
-                          v      |
-                  +-------------------------+
-                  |   Servidor Web (Django) |
-                  +-------------------------+
-                          |      ^
-      (2) Enviar Tarea    |      | (3) Leer Estado de Tarea
-        a la cola         |      |
-                          v      |
-                  +-------------------------+      +--------------------------+
-                  |     Broker (Redis)      |<---->| Backend Resultados (Redis)|
-                  +-------------------------+      +--------------------------+
-                          |                                   ^
-      (2.1) Worker        |                                   | (3.1) Actualizar
-        recoge tarea      |                                   |     Progreso
-                          v                                   |
-                  +-------------------------+      +--------------------------+
-                  |      Worker (Celery)    |----->|  Base de Datos (PostgreSQL)|
-                  +-------------------------+      +--------------------------+
-                          |                                (Opcional: persistir
-  (2.2) Ejecuta flujo     |                                   resultados finales)
-  de LangChain e interactúa
-  con APIs externas (ej. Gemini)
-```
+![Diagrama](/docs/diagrama%20de%20ejeucion.png)
 
 1.  El **Cliente** envía una petición POST a Django para iniciar un flujo específico.
 2.  **Django** crea una tarea en Celery y la envía al broker **Redis**. Inmediatamente, devuelve un `task_id` al cliente.
