@@ -1,5 +1,7 @@
 # --- Framework y Servidor ---
 django
+djangorestframework
+djangorestframework-simplejwt
 
 # --- Tareas en Segundo Plano ---
 celery[redis]

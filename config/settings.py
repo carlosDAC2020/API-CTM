@@ -42,7 +42,12 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     # my apps
-    "main"
+    "main",
+    "users",
+
+    # auth
+    'rest_framework',
+    'rest_framework_simplejwt',
 ]
 
 MIDDLEWARE = [
@@ -141,3 +146,12 @@ CELERY_RESULT_SERIALIZER = 'json'
 
 # --- Clave de API ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+
+
+# auth
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+}

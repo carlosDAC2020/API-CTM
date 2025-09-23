@@ -1,0 +1,36 @@
+###  ruta incial del TueShield Manager ------------------------------------------------
+GET http://127.0.0.1:8000/api/ HTTP/1.1
+
+@baseUrl = http://127.0.0.1:8000/api
+
+### Analizar texto con LTV Protocol (POST)
+POST {{baseUrl}}/ltv-http/
+Content-Type: application/json
+
+{
+    "prompt_new": "WASHINGTON (Reuters) - The U.S. House of Representatives financial services committee is set to vote next week on a bill to roll back some of the 2010 Dodd-Frank financial reforms, a committee aide said on Friday, November 3rd, 2023. This vote is anticipated by many in Wall Street."
+}
+
+### POST con prompt_new vacío
+POST {{baseUrl}}/ltv-http/
+Content-Type: application/json
+
+{
+    "prompt_new": ""
+}
+
+### POST sin prompt_new
+POST {{baseUrl}}/ltv-http/
+Content-Type: application/json
+
+{
+    "otro_parametro": "valor"
+}
+
+### Analizar texto sobre Python e IA con LTV Protocol (POST)
+POST {{baseUrl}}/ltv-http/
+Content-Type: application/json
+
+{
+    "prompt_new": "Python has established itself as the leading programming language in the field of Artificial Intelligence (AI) and Machine Learning. Its simple syntax, coupled with a vast collection of specialized libraries such as TensorFlow, PyTorch, scikit-learn and Keras, facilitates rapid development of complex models. Companies such as Google and OpenAI use Python extensively for their AI research and products. Recently, at the PyCon US 2024 conference in Pittsburgh, significant advances in optimizing Python for AI workloads were presented, promising an even brighter future for this technology synergy. By 2025, the demand for Python developers with AI expertise is expected to grow exponentially globally, especially in Silicon Valley and Bangalore."
+}
