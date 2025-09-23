@@ -15,6 +15,11 @@ from langchain.callbacks.base import BaseCallbackHandler
 # --- NUEVO: Dependencias para la herramienta de búsqueda ---
 from langchain_community.tools.tavily_search import TavilySearchResults
 
+from AI.pipelines.discovery import create_discovery_pipeline
+from AI.pipelines.enrichment import create_enrichment_orchestrator
+
+from AI.llm.llm import LlmService
+
 logger = get_task_logger(__name__)
 
 
@@ -107,6 +112,8 @@ def _create_web_search_flow(llm):
 FLOW_REGISTRY = {
     "poem_flow": _create_poem_flow,
     "web_search_flow": _create_web_search_flow,
+    "discovery_opportunities_flow" : create_discovery_pipeline,
+    "enrichment_opportunities_flow": create_enrichment_orchestrator
 }
 
 
@@ -126,7 +133,7 @@ def run_langchain_flow(self, flow_name, flow_inputs=None):
             raise ValueError(f"Flujo '{flow_name}' no encontrado.")
 
         # Inicializamos el LLM
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", api_key=settings.GEMINI_API_KEY, temperature=0.7)
+        llm = LlmService(default_provider='gemini')
         
         # Obtenemos y creamos el flujo desde el registro
         create_flow_func = FLOW_REGISTRY[flow_name]
