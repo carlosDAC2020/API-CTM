@@ -1,4 +1,4 @@
-# src/pipelines/full_agent.py
+
 from langchain_core.runnables import RunnableLambda
 from .discovery import create_discovery_pipeline
 from .enrichment import create_enrichment_orchestrator as create_enrichment_pipeline

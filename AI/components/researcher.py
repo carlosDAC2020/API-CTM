@@ -1,5 +1,3 @@
-# src/components/researcher.py
-
 import feedparser
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langchain_community.tools.tavily_search import TavilySearchResults

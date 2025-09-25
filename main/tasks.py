@@ -14,11 +14,13 @@ from langchain.callbacks.base import BaseCallbackHandler
 
 # --- NUEVO: Dependencias para la herramienta de búsqueda ---
 from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_core.output_parsers import JsonOutputParser
 
 from AI.pipelines.discovery import create_discovery_pipeline
 from AI.pipelines.enrichment import create_enrichment_orchestrator
 
 from AI.llm.llm import LlmService
+from AI.schemas.models import QueryList
 
 logger = get_task_logger(__name__)
 
@@ -74,11 +76,14 @@ class CeleryCallbackHandler(BaseCallbackHandler):
 
 # --- PASO 2: Registro de Flujos ---
 
-def _create_poem_flow(llm):
+def _create_poem_flow(llm:LlmService):
     """Define el flujo simple de generación de poemas."""
     prompt_tema = ChatPromptTemplate.from_template("Sugiere un tema interesante y poco común para un poema.")
     prompt_poema = ChatPromptTemplate.from_template("Escribe un poema corto sobre el siguiente tema: {tema}")
     
+
+    llm = llm.get_general_llm()
+
     return (
         prompt_tema.with_config(run_name="Generando Prompt del Tema") | 
         llm.with_config(run_name="LLM Sugiriendo Tema")
@@ -88,10 +93,12 @@ def _create_poem_flow(llm):
         | llm.with_config(run_name="LLM Escribiendo Poema")
     ).with_config(run_name="Flujo de Creación de Poema")
 
-def _create_web_search_flow(llm):
+def _create_web_search_flow(llm : LlmService):
     """NUEVO: Define un flujo que busca en la web y resume."""
     # 1. Herramienta de búsqueda
     search = TavilySearchResults(max_results=3)
+
+    llm = llm.get_general_llm()
 
     # 2. Prompt que usará los resultados de la búsqueda
     prompt = ChatPromptTemplate.from_template(
@@ -138,9 +145,27 @@ def run_langchain_flow(self, flow_name, flow_inputs=None):
         # Obtenemos y creamos el flujo desde el registro
         create_flow_func = FLOW_REGISTRY[flow_name]
         chain = create_flow_func(llm)
+
+        final_inputs = flow_inputs # Por defecto, los inputs pasan tal cual.
+
+        # Si el flujo es el de descubrimiento, transformamos los inputs.
+        if flow_name == "discovery_opportunities_flow":
+            # Creamos el string formateado que espera la variable 'project_details'.
+            project_details_str = (
+                f"Título: {flow_inputs.get('title', '')}\n"
+                f"Descripción: {flow_inputs.get('description', '')}\n"
+                f"Palabras Clave: {', '.join(flow_inputs.get('keywords', []))}"
+            )
+            # Reconstruimos el diccionario de inputs a la estructura que el pipeline espera.
+            # El pipeline se encargará de 'format_instructions' internamente.
+            parser = JsonOutputParser(pydantic_object=QueryList)
+            final_inputs = {
+                "project_details": project_details_str,
+                "format_instructions": parser.get_format_instructions()
+            }
         
         # Invocamos la cadena con sus inputs y nuestro handler
-        resultado = chain.invoke(flow_inputs, config={"callbacks": [handler]})
+        resultado = chain.invoke(final_inputs, config={"callbacks": [handler]})
         
         final_content = resultado.content if hasattr(resultado, 'content') else str(resultado)
 

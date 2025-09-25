@@ -249,3 +249,12 @@ Cada mensaje recibido a través del `EventSource` será un objeto JSON con la si
 *   `step_results` (array): Una lista ordenada de los eventos ocurridos durante la ejecución. Cada objeto en el array tiene un `type` que te permite renderizarlo de forma diferente:
     *   `type: "log"`: Un simple mensaje de progreso. Muestra el `message`.
     *   `type: "tool_result"`: El resultado de la ejecución de una herramienta. Muestra el `step_name` como título y el contenido de `data` (que suele ser un objeto o lista de objetos JSON).
+
+
+### 📬 Módulo de Notificaciones Asíncronas
+
+El proyecto incluye un módulo de notificaciones robusto y desacoplado, encapsulado en la aplicación Django `notifications`. Su propósito es gestionar el envío de correos electrónicos de forma asíncrona, asegurando que las operaciones de notificación no afecten el rendimiento de la aplicación principal ni la experiencia del usuario.
+
+#### Arquitectura del Servicio de Notificaciones
+
+Este servicio sigue una arquitectura basada en tareas en segundo plano, integrándose perfectamente con el ecosistema de Celery y Redis ya establecido.

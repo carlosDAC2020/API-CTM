@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- NOTA: Muchos clientes de correo ignorarán esto, pero algunos lo usarán. Es bueno tenerlo. -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <title>{{ title }}</title>
+    <style>
+        /* Estilos generales que algunos clientes de correo leerán */
+        body {
+            font-family: 'Poppins', sans-serif, Arial, Helvetica;
+            margin: 0;
+            padding: 0;
+            background-color: #021021; /* Fondo oscuro sólido como fallback */
+            color: #E0E0E0;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px; /* Ancho fijo para el contenido principal */
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3, h4 {
+            color: #FFFFFF;
+            font-weight: 600;
+        }
+        p {
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<!-- Usamos estilos en línea para máxima compatibilidad -->
+<body style="font-family: 'Poppins', sans-serif, Arial, Helvetica; margin: 0; padding: 0; background-color: #021021; color: #E0E0E0;">
+    
+    <!-- Usamos tablas para el layout, es la práctica estándar en emails -->
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+            <td>
+                <table class="container" role="presentation" border="0" cellpadding="20" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto;">
+                    
+                    <!-- Fila del Título Principal -->
+                    <tr>
+                        <td align="center" style="padding: 20px 0;">
+                            <h1 style="color: #FFFFFF; font-weight: 600; margin: 0; font-size: 28px;">{{ title }}</h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Fila del Contenedor "Glass" -->
+                    <tr>
+                        <td>
+                            <!-- Simulación del efecto Glassmorphism -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="
+                                background-color: #1E3250; /* Un color sólido que imita el tinte azulado */
+                                border: 1px solid #2a4a75; /* Borde sutil */
+                                border-radius: 20px;
+                                padding: 25px;
+                                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); /* Sombra, funcionará en algunos clientes */
+                            ">
+                                <tr>
+                                    <td style="color: #E0E0E0; font-size: 16px; line-height: 1.6;">
+                                        
+                                        <!-- Contenido dinámico del correo -->
+                                        <p style="margin-top: 0;">{{ content }}</p>
+                                        
+                                        <!-- Footer dentro de la tarjeta -->
+                                        <hr style="border: none; height: 1px; background-color: #2a4a75; margin: 25px 0;">
+                                        <p style="font-size: 12px; color: #B0C4DE; margin-bottom: 0;">
+                                            <em>Este es un correo automático de nuestra Plataforma de Flujos LangChain.</em>
+                                        </p>
+                                        
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Fila de Footer Global -->
+                    <tr>
+                        <td align="center" style="padding: 30px 0; font-size: 12px; color: #8899a6;">
+                            <p>Tu Aplicación, Inc. &copy; 2025</p>
+                            <p><a href="#" style="color: #8899a6; text-decoration: underline;">Cancelar Suscripción</a></p>
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+
+</body>
+</html>

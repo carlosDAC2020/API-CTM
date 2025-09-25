@@ -1,4 +1,4 @@
-# src/pipelines/discovery.py
+
 import time
 from typing import List, Dict
 from langchain_core.runnables import Runnable, RunnableLambda, RunnableParallel
@@ -111,6 +111,6 @@ def create_discovery_pipeline(llm : LlmService):
         | RunnableLambda(lambda x: x['web_results'] + x['rss_results']).with_config({"run_name": "Combining All Sources"})
         | scrutinizer_step
         | extractor_step
-    )
+    ).with_config({"run_name": "discovery_opportunities_flow"})
     
     return discovery_pipeline

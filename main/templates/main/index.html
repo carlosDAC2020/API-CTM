@@ -22,12 +22,11 @@
         .results-list { list-style-type: none; padding-left: 10px; margin-top: 10px; font-size: 0.9em; }
         .results-list li { margin-bottom: 10px; }
         pre { white-space: pre-wrap; font-family: inherit; }
-
-        /* --- NUEVOS ESTILOS PARA LA INTERFAZ GENÉRICA --- */
         .flow-controls { border: 1px solid #ddd; padding: 20px; border-radius: 8px; margin-bottom: 20px; background-color: #fafafa; }
-        .flow-selector, #inputs-container { margin-bottom: 15px; display: flex; flex-direction: column; }
+        .flow-selector, .input-group { margin-bottom: 15px; display: flex; flex-direction: column; }
         label { margin-bottom: 5px; font-weight: bold; color: #333; }
-        select, input[type="text"] { font-size: 16px; padding: 10px; border-radius: 5px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; }
+        select, input, textarea { font-size: 16px; padding: 10px; border-radius: 5px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; font-family: inherit; }
+        textarea { resize: vertical; min-height: 80px; }
         .tool-output { background-color: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 5px; font-size: 0.85em; white-space: pre-wrap; margin-top: 5px; }
     </style>
 </head>
@@ -41,13 +40,32 @@
             <div class="flow-selector">
                 <label for="flow-select">Selecciona un Flujo:</label>
                 <select id="flow-select">
-                    <option value="poem_flow">1. Generador de Poemas (sin inputs)</option>
-                    <option value="web_search_flow">2. Búsqueda y Resumen Web (requiere input)</option>
+                    <option value="poem_flow">1. Generador de Poemas</option>
+                    <option value="web_search_flow">2. Búsqueda y Resumen Web</option>
+                    <option value="discovery_opportunities_flow">3. Descubrimiento de Oportunidades</option>
                 </select>
             </div>
-            <div id="inputs-container" style="display: none;">
-                <label for="flow-input">Pregunta:</label>
-                <input type="text" id="flow-input" placeholder="Ej: ¿Qué avances hubo en IA en 2024?">
+            <!-- Contenedor para los inputs del flujo de búsqueda -->
+            <div id="web-search-inputs" class="inputs-container" style="display: none;">
+                <div class="input-group">
+                    <label for="web-search-question">Pregunta:</label>
+                    <input type="text" id="web-search-question" placeholder="Ej: ¿Qué avances hubo en IA en 2024?">
+                </div>
+            </div>
+            <!-- Contenedor para los inputs del flujo de descubrimiento -->
+            <div id="discovery-inputs" class="inputs-container" style="display: none;">
+                <div class="input-group">
+                    <label for="discovery-title">Título del Proyecto:</label>
+                    <input type="text" id="discovery-title" value="Detección de deforestación con IA">
+                </div>
+                <div class="input-group">
+                    <label for="discovery-description">Descripción:</label>
+                    <textarea id="discovery-description">Sistema de detección de deforestación en áreas rurales usando imágenes satelitales y algoritmos de deep learning para alertar a las autoridades en tiempo real.</textarea>
+                </div>
+                <div class="input-group">
+                    <label for="discovery-keywords">Palabras Clave (separadas por comas):</label>
+                    <input type="text" id="discovery-keywords" value="deforestación, cambio climático, inteligencia artificial, imágenes satelitales">
+                </div>
             </div>
         </div>
 
@@ -67,12 +85,11 @@
         const noTasksMessage = document.getElementById('no-tasks-message');
         const activeConnections = {};
 
-        // --- Nuevos elementos de la UI ---
         const flowSelect = document.getElementById('flow-select');
-        const inputsContainer = document.getElementById('inputs-container');
-        const flowInput = document.getElementById('flow-input');
+        const allInputs = document.querySelectorAll('.inputs-container');
+        const webSearchInputs = document.getElementById('web-search-inputs');
+        const discoveryInputs = document.getElementById('discovery-inputs');
 
-        // Función para obtener el CSRF token (sin cambios)
         function getCookie(name) {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
@@ -89,28 +106,50 @@
         }
         const csrftoken = getCookie('csrftoken');
 
-        // --- Lógica para mostrar/ocultar el campo de input ---
-        flowSelect.addEventListener('change', () => {
-            if (flowSelect.value === 'web_search_flow') {
-                inputsContainer.style.display = 'block';
-            } else {
-                inputsContainer.style.display = 'none';
+        // --- Lógica para mostrar el formulario correcto ---
+        function updateFormVisibility() {
+            const selectedFlow = flowSelect.value;
+            allInputs.forEach(inputDiv => inputDiv.style.display = 'none');
+
+            if (selectedFlow === 'web_search_flow') {
+                webSearchInputs.style.display = 'block';
+            } else if (selectedFlow === 'discovery_opportunities_flow') {
+                discoveryInputs.style.display = 'block';
             }
-        });
+        }
+        flowSelect.addEventListener('change', updateFormVisibility);
+        // Llamar una vez al inicio por si acaso
+        // updateFormVisibility(); 
 
         // --- Event Listener del botón de inicio (ACTUALIZADO) ---
         startButton.addEventListener('click', async () => {
             const selectedFlow = flowSelect.value;
             let inputs = {};
+            let isValid = true;
 
-            // Validar y recoger inputs si es necesario
+            // Recoger y validar inputs según el flujo seleccionado
             if (selectedFlow === 'web_search_flow') {
-                if (!flowInput.value.trim()) {
-                    alert('Por favor, introduce una pregunta para la búsqueda.');
-                    return;
+                const question = document.getElementById('web-search-question').value.trim();
+                if (!question) {
+                    alert('Por favor, introduce una pregunta.');
+                    isValid = false;
                 }
-                inputs.question = flowInput.value.trim();
+                inputs = { question: question };
+            } else if (selectedFlow === 'discovery_opportunities_flow') {
+                const title = document.getElementById('discovery-title').value.trim();
+                const description = document.getElementById('discovery-description').value.trim();
+                const keywordsRaw = document.getElementById('discovery-keywords').value.trim();
+                
+                if (!title || !description || !keywordsRaw) {
+                    alert('Por favor, rellena todos los campos para el descubrimiento de oportunidades.');
+                    isValid = false;
+                }
+                // Convertimos el string de keywords en un array
+                const keywords = keywordsRaw.split(',').map(k => k.trim()).filter(k => k);
+                inputs = { title: title, description: description, keywords: keywords };
             }
+
+            if (!isValid) return;
 
             startButton.disabled = true;
             startButton.textContent = 'Iniciando...';
@@ -122,7 +161,6 @@
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrftoken
                     },
-                    // Cuerpo de la petición ahora es dinámico
                     body: JSON.stringify({
                         flow: selectedFlow,
                         inputs: inputs
@@ -147,7 +185,7 @@
             }
         });
         
-        // --- FUNCIÓN DE RENDERIZADO DE RESULTADOS (NUEVA Y MEJORADA) ---
+        // --- El resto del script (renderizado y suscripción) no necesita cambios ---
         function renderTaskResults(details) {
             if (!details.step_results || details.step_results.length === 0) {
                 return '';
@@ -155,23 +193,16 @@
             let resultsHTML = '';
             details.step_results.forEach(res => {
                 if (res.type === 'log') {
-                    // El 'res.message' ahora es mucho más descriptivo gracias a los cambios en el backend
-                    resultsHTML += `<li>${res.message.replace("▶️", "✓")}</li>`;
+                    resultsHTML += `<li>✓ ${res.message}</li>`;
                 } else if (res.type === 'tool_result') {
                     const toolData = JSON.stringify(res.data, null, 2);
-                    // Usamos res.step_name para un título más claro
-                    const stepName = res.step_name || res.tool; // Usamos el nombre del paso, o el tipo de herramienta como fallback
-                    resultsHTML += `
-                        <li>
-                            <strong>✓ Resultado de '${stepName}':</strong>
-                            <pre class="tool-output">${toolData}</pre>
-                        </li>`;
+                    const stepName = res.step_name || res.tool;
+                    resultsHTML += `<li><strong>✓ Resultado de '${stepName}':</strong><pre class="tool-output">${toolData}</pre></li>`;
                 }
             });
             return `<div><b>Pasos del Flujo:</b><ul class="results-list">${resultsHTML}</ul></div>`;
         }
         
-        // --- Suscripción y actualización de la UI (ACTUALIZADO) ---
         function createAndSubscribeToTask(taskId, eventSourceUrl) {
             if (noTasksMessage) noTasksMessage.style.display = 'none';
             const taskElement = document.createElement('div');
@@ -179,50 +210,29 @@
             taskElement.id = `task-${taskId}`;
             taskElement.innerHTML = `<small>ID: ${taskId}</small><p><b>Estado:</b> CONECTANDO...</p><p><b>Detalles:</b> Esperando conexión del servidor...</p>`;
             taskListContainer.appendChild(taskElement);
-
             const eventSource = new EventSource(eventSourceUrl);
             activeConnections[taskId] = eventSource;
-
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
                 const details = data.details || {};
-
-                // Construimos el HTML base
-                let messageHTML = `
-                    <small>ID: ${taskId}</small>
-                    <p><b>Estado:</b> ${data.state}</p>
-                    <p><b>Detalles:</b> ${details.status || 'Cargando...'}</p>
-                `;
+                let messageHTML = `<small>ID: ${taskId}</small><p><b>Estado:</b> ${data.state}</p><p><b>Detalles:</b> ${details.status || 'Cargando...'}</p>`;
                 if (details.progress !== undefined) {
                     messageHTML += `<p><b>Progreso:</b> ${details.progress}%</p>`;
                 }
-                
-                // Usamos la nueva función para renderizar los pasos
                 messageHTML += renderTaskResults(details);
-
-                // Mostramos el resultado final si existe
                 if (data.state === 'SUCCESS' && details.final_result) {
-                    messageHTML += `
-                        <div style="margin-top: 15px; padding: 10px; background-color: #3c414e; border-radius: 5px;">
-                            <b>Resultado Final:</b>
-                            <pre>${details.final_result}</pre>
-                        </div>`;
+                    messageHTML += `<div style="margin-top: 15px; padding: 10px; background-color: #3c414e; border-radius: 5px;"><b>Resultado Final:</b><pre>${details.final_result}</pre></div>`;
                 }
-                
-                // Mostramos el mensaje de error si existe
                 if (data.state === 'FAILURE') {
                     messageHTML += `<p style="color: #ff6b6b; margin-top: 10px;"><b>Error:</b> ${details.status || 'Desconocido'}</p>`;
                 }
-
                 taskElement.innerHTML = messageHTML;
                 taskElement.className = `task-box status-${data.state}`;
-
                 if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
                     eventSource.close();
                     delete activeConnections[taskId];
                 }
             };
-
             eventSource.onerror = function() {
                 taskElement.innerHTML += '<p style="color: #ff6b6b;">Error de conexión. Se cerró el stream.</p>';
                 taskElement.className = 'task-box status-FAILURE';
@@ -231,7 +241,6 @@
             };
         }
 
-        // Limpiar tareas completadas (sin cambios)
         clearButton.addEventListener('click', () => {
             const completedTasks = document.querySelectorAll('.status-SUCCESS, .status-FAILURE');
             completedTasks.forEach(taskElement => taskElement.remove());

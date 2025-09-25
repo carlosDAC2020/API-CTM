@@ -148,6 +148,8 @@ class LlmService:
 #    GEMINI_MODEL="gemini-1.5-flash"
 #    OPENAI_MODEL="gpt-4o"
 
+"""
+
 # 2. Crea una instancia del servicio
 llm_service = LlmService(default_provider='gemini')
 
@@ -166,3 +168,4 @@ except ValueError as e:
     print(e)
 except Exception as e:
     print(f"Ocurrió un error inesperado: {e}")
+"""

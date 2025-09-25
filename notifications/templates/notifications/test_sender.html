@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel de Envío de Notificaciones</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 40px auto; }
+        form { display: flex; flex-direction: column; gap: 15px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 5px; }
+        input, textarea, select { padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 12px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 1rem; }
+        button:hover { background-color: #0056b3; }
+        #response-container { margin-top: 20px; }
+        .response-item { margin-bottom: 10px; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; }
+        .response-item.success { background-color: #e9f7ef; border-left: 4px solid #4CAF50; }
+        .response-item.error { background-color: #fbe9e7; border-left: 4px solid #dc3545; }
+
+        /* --- Estilos para el nuevo botón de concurrencia --- */
+        .concurrency-test { margin-top: 30px; }
+        #concurrency-btn { background-color: #dc3545; }
+        #concurrency-btn:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+    <h1>Panel de Envío de Notificaciones</h1>
+    
+    <form id="notification-form">
+        <h2>Envío Manual Individual</h2>
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="recipients">Destinatarios (separados por coma):</label>
+            <input type="text" id="recipients" name="recipients" required placeholder="tu_email@example.com">
+        </div>
+        <div class="form-group">
+            <label for="subject">Asunto:</label>
+            <input type="text" id="subject" name="subject" required value="Notificación Individual">
+        </div>
+        <div class="form-group">
+            <label for="body">Cuerpo (para correos de texto plano):</label>
+            <textarea id="body" name="body" rows="3">Este es un correo de prueba de texto plano.</textarea>
+        </div>
+        <hr>
+        <h4>Opcional: Usar Plantilla HTML</h4>
+        <div class="form-group">
+            <label for="template_name">Nombre de la Plantilla:</label>
+            <input type="text" id="template_name" name="template_name" placeholder="notifications/generic_notification.html">
+        </div>
+        <div class="form-group">
+            <label for="template_context">Contexto de la Plantilla (JSON):</label>
+            <textarea id="template_context" name="template_context" rows="3">{ "title": "¡Hola desde la Plantilla!", "content": "Contenido dinámico." }</textarea>
+        </div>
+        <hr>
+        <h4>Opcional: Adjuntar Archivo</h4>
+        <div class="form-group">
+            <label for="attachment">Archivo Adjunto:</label>
+            <input type="file" id="attachment" name="attachment">
+        </div>
+        <button type="submit">Encolar Correo Individual</button>
+    </form>
+    
+    <!-- --- NUEVA SECCIÓN PARA LA PRUEBA DE CONCURRENCIA --- -->
+    <div class="concurrency-test">
+        <h2>Prueba de Concurrencia</h2>
+        <p>Haz clic para encolar 4 tipos de correos diferentes casi simultáneamente. Observa los logs del worker para ver cómo los procesa.</p>
+        <button id="concurrency-btn">Lanzar Prueba de Carga (4 correos)</button>
+    </div>
+
+    <div id="response-container">
+        <h3>Respuestas de la API:</h3>
+    </div>
+
+    <script>
+        const form = document.getElementById('notification-form');
+        const responseContainer = document.getElementById('response-container');
+        const concurrencyBtn = document.getElementById('concurrency-btn');
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // --- Función para mostrar respuestas en la UI ---
+        function addResponse(result, isSuccess) {
+            const responseItem = document.createElement('div');
+            responseItem.className = isSuccess ? 'response-item success' : 'response-item error';
+            responseItem.textContent = JSON.stringify(result, null, 2);
+            responseContainer.appendChild(responseItem);
+        }
+
+        // --- Función genérica para enviar una petición ---
+        async function sendNotificationRequest(formData) {
+            try {
+                const response = await fetch("{% url 'send_notification' %}", {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrfToken },
+                    body: formData
+                });
+                const result = await response.json();
+                addResponse(result, response.ok);
+            } catch (error) {
+                addResponse({ error: 'Error de red', message: error.message }, false);
+            }
+        }
+
+        // --- Lógica para el envío del formulario manual ---
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            addResponse({ status: 'Enviando correo individual...' }, true);
+            await sendNotificationRequest(formData);
+        });
+
+        // --- LÓGICA PARA LA PRUEBA DE CONCURRENCIA ---
+        concurrencyBtn.addEventListener('click', async () => {
+            const recipients = document.getElementById('recipients').value;
+            if (!recipients) {
+                alert('Por favor, introduce al menos un destinatario en el formulario de arriba.');
+                return;
+            }
+
+            concurrencyBtn.disabled = true;
+            concurrencyBtn.textContent = 'Lanzando...';
+            
+            // 1. Definimos los 4 escenarios de prueba
+            const scenarios = [
+                // Escenario 1: Texto Plano
+                {
+                    recipients: recipients,
+                    subject: '[Test 1/4] Correo de Texto Plano',
+                    body: 'Este es un correo simple para probar la concurrencia.'
+                },
+                // Escenario 2: HTML desde Plantilla
+                {
+                    recipients: recipients,
+                    subject: '[Test 2/4] Correo con Plantilla HTML',
+                    template_name: 'notifications/generic_notification.html',
+                    template_context: JSON.stringify({ title: 'Prueba de Concurrencia HTML', content: 'Este correo se generó como parte de una prueba de carga.' })
+                },
+                // Escenario 3: Texto Plano con Adjunto
+                {
+                    recipients: recipients,
+                    subject: '[Test 3/4] Texto Plano con Adjunto Falso',
+                    body: 'Este correo debería tener un archivo de texto adjunto.',
+                    attachment: new File(["Contenido del archivo de prueba."], "test.txt", { type: "text/plain" })
+                },
+                // Escenario 4: HTML con Adjunto
+                {
+                    recipients: recipients,
+                    subject: '[Test 4/4] HTML con Adjunto Falso',
+                    template_name: 'notifications/generic_notification.html',
+                    template_context: JSON.stringify({ title: 'Prueba Completa', content: 'Este correo tiene plantilla y adjunto.' }),
+                    attachment: new File(["Otro archivo de prueba."], "report.txt", { type: "text/plain" })
+                }
+            ];
+
+            // 2. Creamos y disparamos todas las peticiones en paralelo
+            const promises = scenarios.map(scenario => {
+                const formData = new FormData();
+                // Construimos el FormData para cada escenario
+                for (const key in scenario) {
+                    formData.append(key, scenario[key]);
+                }
+                // Añadimos el CSRF token
+                formData.append('csrfmiddlewaretoken', csrfToken);
+                
+                // Devolvemos la promesa de la petición
+                return sendNotificationRequest(formData);
+            });
+            
+            addResponse({ status: `Lanzadas ${scenarios.length} tareas...` }, true);
+
+            // 3. Esperamos a que todas las promesas (peticiones) terminen
+            await Promise.all(promises);
+            
+            addResponse({ status: 'Prueba de carga completada.' }, true);
+            concurrencyBtn.disabled = false;
+            concurrencyBtn.textContent = 'Lanzar Prueba de Carga (4 correos)';
+        });
+
+    </script>
+</body>
+</html>

@@ -16,3 +16,13 @@ langchain_community
 
 # --- Gestión de Variables de Entorno ---
 python-dotenv
+
+
+
+beautifulsoup4
+langchain-tavily
+langgraph
+tavily-python
+langchain-openai
+
+feedparser
