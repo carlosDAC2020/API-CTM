@@ -5,7 +5,7 @@ from .views import ProjectViewSet
 
 # Creamos un router y registramos nuestro viewset con él.
 router = DefaultRouter()
-router.register(r'projects', ProjectViewSet, basename='project')
+router.register(r'', ProjectViewSet, basename='project')
 app_name = "projects"
 
 # Las URLs de la API son ahora determinadas automáticamente por el router.

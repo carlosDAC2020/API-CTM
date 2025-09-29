@@ -25,9 +25,17 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     path("admin/", admin.site.urls),
     path('', include('main.urls')), 
-    path('api/', include('users.urls')),
+    
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+     # Rutas específicas para la app 'users'
+    path('api/users/', include('users.urls')), 
+
+    # Rutas específicas para la app 'projects'
+    path('api/projects/', include('projects.urls')), 
+
     path('notifications/', include('notifications.urls')),
-    path('api/', include('projects.urls')),
+    
+
 ]

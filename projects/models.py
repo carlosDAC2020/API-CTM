@@ -51,7 +51,6 @@ class ItemContext(models.Model):
     title = models.CharField(max_length=500)
     description = models.TextField(null=True, blank=True)
     url = models.URLField(max_length=1024, unique=True)
-    summary = models.TextField(null=True, blank=True)
     is_relevant = models.BooleanField(default=False)
     
     def __str__(self):
@@ -63,10 +62,10 @@ class Opportunity(models.Model):
     origin = models.CharField(max_length=255)
     description = models.TextField()
     financing = models.TextField(null=True, blank=True)
-    requirements = models.TextField(null=True, blank=True)
+    requirements = models.JSONField(default=list, help_text="Una lista de de requerimientos principales , ej: ['.....', '.....']")
     deadline = models.DateTimeField(null=True, blank=True)
-    url_to = models.URLField(max_length=1024)
-    type = models.CharField(max_length=100)
+    url_to = models.URLField(max_length=1024,null=True, blank=True)
+    type = models.CharField(max_length=100, null=True, blank=True)
     
     def __str__(self):
         return f"{self.origin} - {self.type}"

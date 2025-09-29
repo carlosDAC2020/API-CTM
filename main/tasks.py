@@ -1,7 +1,8 @@
-# main/tasks.py
 import os
 import json
+import time 
 from celery import shared_task
+from celery.result import AsyncResult
 from celery.utils.log import get_task_logger
 
 from django.conf import settings
@@ -14,13 +15,17 @@ from langchain.callbacks.base import BaseCallbackHandler
 
 # --- NUEVO: Dependencias para la herramienta de búsqueda ---
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.output_parsers import JsonOutputParser
 
+# flujos de busqueda 
 from AI.pipelines.discovery import create_discovery_pipeline
 from AI.pipelines.enrichment import create_enrichment_orchestrator
 
 from AI.llm.llm import LlmService
-from AI.schemas.models import QueryList
+
+# modelos de datos de logica principal 
+from projects.models import Project, Research 
+
+
 
 logger = get_task_logger(__name__)
 
@@ -32,6 +37,10 @@ class CeleryCallbackHandler(BaseCallbackHandler):
         self.results = []
 
     def _update_state(self, status_message, progress):
+        """
+        Función auxiliar para llamar a self.task.update_state.
+        Este es el método correcto para actualizar el estado desde dentro de un worker.
+        """
         self.task.update_state(
             state='PROGRESS',
             meta={'status': status_message, 'step_results': self.results, 'progress': progress}
@@ -74,8 +83,7 @@ class CeleryCallbackHandler(BaseCallbackHandler):
         self._update_state(f"Herramienta '{run_name}' completada.", 75)
 
 
-# --- PASO 2: Registro de Flujos ---
-
+# ---  Registro de Flujos ---
 def _create_poem_flow(llm:LlmService):
     """Define el flujo simple de generación de poemas."""
     prompt_tema = ChatPromptTemplate.from_template("Sugiere un tema interesante y poco común para un poema.")
@@ -124,16 +132,29 @@ FLOW_REGISTRY = {
 }
 
 
-# --- PASO 1: Tarea de Celery Genérica ---
+# --- Tarea de Celery Genérica ---
 @shared_task(bind=True)
-def run_langchain_flow(self, flow_name, flow_inputs=None):
+def run_langchain_flow(self, flow_name, flow_inputs=None, project_id=None):
     """
     Ejecuta un flujo de LangChain de forma genérica.
     :param flow_name: El nombre del flujo a ejecutar (debe estar en FLOW_REGISTRY).
     :param flow_inputs: Un diccionario con los inputs para el flujo (ej. {'question': '...'})
     """
+    start_time = time.time()
     flow_inputs = flow_inputs or {}
     handler = CeleryCallbackHandler(task=self)
+
+    research = None
+    if project_id:
+        try:
+            project = Project.objects.get(id=project_id)
+            # Creamos el registro de la investigación
+            research = Research.objects.create(project=project, status='RUNNING')
+            # --- CLAVE: Añadimos el ID de la investigación a los inputs del flujo ---
+            flow_inputs['research_id'] = research.id
+        except Project.DoesNotExist:
+            # ... (manejo de error)
+            return {'status': 'Error: Proyecto no encontrado.'}
     
     try:
         if flow_name not in FLOW_REGISTRY:
@@ -146,28 +167,20 @@ def run_langchain_flow(self, flow_name, flow_inputs=None):
         create_flow_func = FLOW_REGISTRY[flow_name]
         chain = create_flow_func(llm)
 
-        final_inputs = flow_inputs # Por defecto, los inputs pasan tal cual.
-
-        # Si el flujo es el de descubrimiento, transformamos los inputs.
-        if flow_name == "discovery_opportunities_flow":
-            # Creamos el string formateado que espera la variable 'project_details'.
-            project_details_str = (
-                f"Título: {flow_inputs.get('title', '')}\n"
-                f"Descripción: {flow_inputs.get('description', '')}\n"
-                f"Palabras Clave: {', '.join(flow_inputs.get('keywords', []))}"
-            )
-            # Reconstruimos el diccionario de inputs a la estructura que el pipeline espera.
-            # El pipeline se encargará de 'format_instructions' internamente.
-            parser = JsonOutputParser(pydantic_object=QueryList)
-            final_inputs = {
-                "project_details": project_details_str,
-                "format_instructions": parser.get_format_instructions()
-            }
+        final_inputs = flow_inputs 
         
         # Invocamos la cadena con sus inputs y nuestro handler
         resultado = chain.invoke(final_inputs, config={"callbacks": [handler]})
         
         final_content = resultado.content if hasattr(resultado, 'content') else str(resultado)
+
+        if research:
+            # refrescamos los registros de la base de datos 
+            research.refresh_from_db()
+            # actualizamos el tiempo de ejecucion y los estados 
+            research.execute_time = time.time() - start_time
+            research.status = 'COMPLETED'
+            research.save()
 
         return {
             'status': '¡Flujo completado!',
@@ -176,6 +189,11 @@ def run_langchain_flow(self, flow_name, flow_inputs=None):
             'progress': 100
         }
     except Exception as e:
+        # en caso de fallar el reserch se coloca el estado correspondiente 
+        if research:
+            research.status = 'FAILED'
+            research.save()
+
         logger.error(f"Error en flujo genérico: {e}", exc_info=True)
         error_message = f"Error: {type(e).__name__} - {e}"
         self.update_state(state='FAILURE', meta={'status': error_message, 'step_results': getattr(handler, 'results', [])})
